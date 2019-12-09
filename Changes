@@ -1,0 +1,26 @@
+0.005   2019-12-05  Released-By: PERLANCAR; Urgency: low
+
+	- No functional changes.
+
+	- [doc] Mention App::VivaldiUtils.
+
+
+0.004   2019-11-29  Released-By: PERLANCAR; Urgency: medium
+
+	- Add CLI's: firefox-is-paused, ps-firefox.
+
+
+0.003   2019-11-28  Released-By: PERLANCAR; Urgency: medium
+
+        - [build] Rebuild with updated Data::Sah (0.902) which has adjusted with
+          the new naming of Data::Sah::Coerce rule modules (0.034+).
+
+
+0.002   2019-11-28  Released-By: PERLANCAR; Urgency: medium
+
+	- Also catch 'WebExtensions' process.
+
+
+0.001   2019-11-23  Released-By: PERLANCAR
+
+        - First release.
