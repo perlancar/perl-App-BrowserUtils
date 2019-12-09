@@ -52,6 +52,18 @@ our %args_common = (
     %argopt_users,
 );
 
+our $desc_pause = <<'_';
+
+A modern browser now runs complex web pages and applications. Despite browser's
+power management feature, these pages/tabs on the browser often still eat
+considerable CPU cycles even though they run in the background. Stopping (kill
+-STOP) the browser processes is a simple and effective way to stop CPU eating on
+Unix. It can be performed whenever you are not using your browsers for a little
+while, e.g. when you are typing on an editor or watching a movie. When you want
+to use your browser again, simply unpause it.
+
+_
+
 sub _do_browser {
     require Proc::Find;
 
@@ -131,6 +143,7 @@ sub ps_browsers {
 $SPEC{pause_browsers} = {
     v => 1.1,
     summary => "Pause (kill -STOP) browsers",
+    description => $desc_pause,
     args => {
         %args_common,
     },
