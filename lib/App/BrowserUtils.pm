@@ -55,7 +55,10 @@ our %args_common = (
 sub _do_browser {
     require Proc::Find;
 
-    my ($which_action, $which_browser, $browser_fname_pat, %args) = @_;
+    my ($which_action, $which_browser, %args) = @_;
+
+    my $browser_fname_pat = $browsers{$which_browser}{browser_fname_pat}
+        or return [400, "Unknown browser '$which_browser'"];
 
     my $procs = Proc::Find::find_proc(
         detail => 1,
@@ -73,18 +76,18 @@ sub _do_browser {
 
     my @pids = map { $_->{pid} } @$procs;
 
-    if ($which eq 'ps') {
+    if ($which_action eq 'ps') {
         return [200, "OK", $procs, {'table.fields'=>[qw/pid uid euid state/]}];
-    } elsif ($which eq 'pause') {
+    } elsif ($which_action eq 'pause') {
         kill STOP => @pids;
         [200, "OK", "", {"func.pids" => \@pids}];
-    } elsif ($which eq 'unpause') {
+    } elsif ($which_action eq 'unpause') {
         kill CONT => @pids;
         [200, "OK", "", {"func.pids" => \@pids}];
-    } elsif ($which eq 'terminate') {
+    } elsif ($which_action eq 'terminate') {
         kill KILL => @pids;
         [200, "OK", "", {"func.pids" => \@pids}];
-    } elsif ($which eq 'is_paused') {
+    } elsif ($which_action eq 'is_paused') {
         my $num_stopped = 0;
         my $num_unstopped = 0;
         my $num_total = 0;
@@ -106,45 +109,69 @@ sub _do_browser {
     }
 }
 
-$SPEC{ps_firefox} = {
+$SPEC{ps_browsers} = {
     v => 1.1,
-    summary => "List Firefox processes",
+    summary => "List browser processes",
     args => {
         %args_common,
     },
 };
-sub ps_firefox {
-    _do_firefox('ps', @_);
+sub ps_browsers {
+    my %args = @_;
+
+    my @rows;
+    for my $browser (sort keys %browsers) {
+        my $res = _do_browser('ps', $browser, %args);
+        return $res unless $res->[0] == 200;
+        push @rows, @{$res->[2]};
+    }
+    [200, "OK", \@rows];
 }
 
-$SPEC{pause_firefox} = {
+$SPEC{pause_browsers} = {
     v => 1.1,
-    summary => "Pause (kill -STOP) Firefox",
+    summary => "Pause (kill -STOP) browsers",
     args => {
         %args_common,
     },
 };
-sub pause_firefox {
-    _do_firefox('pause', @_);
+sub pause_browsers {
+    my %args = @_;
+
+    my @pids;
+    for my $browser (sort keys %browsers) {
+        my $res = _do_browser('pause', $browser, %args);
+        return $res unless $res->[0] == 200;
+        push @pids, @{$res->[3]{'func.pids'}};
+    }
+    [200, "OK", undef, {"func.pids" => \@pids}];
 }
 
-$SPEC{unpause_firefox} = {
+$SPEC{unpause_browsers} = {
     v => 1.1,
-    summary => "Unpause (resume, continue, kill -CONT) Firefox",
+    summary => "Unpause (resume, continue, kill -CONT) browsers",
     args => {
         %args_common,
     },
 };
-sub unpause_firefox {
-    _do_firefox('unpause', @_);
+sub unpause_browsers {
+    my %args = @_;
+
+    my @pids;
+    for my $browser (sort keys %browsers) {
+        my $res = _do_browser('unpause', $browser, %args);
+        return $res unless $res->[0] == 200;
+        push @pids, @{$res->[3]{'func.pids'}};
+    }
+    [200, "OK", undef, {"func.pids" => \@pids}];
 }
 
-$SPEC{firefox_is_paused} = {
+$SPEC{browsers_are_paused} = {
     v => 1.1,
-    summary => "Check whether Firefox is paused",
+    summary => "Check whether browsers are paused",
     description => <<'_',
 
-Firefox is defined as paused if *all* of its processes are in 'stop' state.
+Browser is defined as paused if *all* of its processes are in 'stop' state.
 
 _
     args => {
@@ -152,19 +179,41 @@ _
         %argopt_quiet,
     },
 };
-sub firefox_is_paused {
-    _do_firefox('is_paused', @_);
+sub browsers_are_paused {
+    my %args = @_;
+
+    my $has_processes = 0;
+    for my $browser (sort keys %browsers) {
+        my $res = _do_browser('is_paused', $browser, %args);
+        return $res unless $res->[0] == 200;
+        return $res if defined $res->[2] && !$res->[2];
+        $has_processes++ if defined $res->[2];
+    }
+    my $msg = !$has_processes ? "There are no browser processes" :
+        "Browsers are paused (all processes are in stop state)";
+    return [200, "OK", 1, {
+        'cmdline.exit_code' => 0,
+        'cmdline.result' => $args{quiet} ? '' : $msg,
+    }];
 }
 
-$SPEC{terminate_firefox} = {
+$SPEC{terminate_browsers} = {
     v => 1.1,
-    summary => "Terminate  (kill -KILL) Firefox",
+    summary => "Terminate  (kill -KILL) browsers",
     args => {
         %args_common,
     },
 };
-sub terminate_firefox {
-    _do_firefox('terminate', @_);
+sub terminate_browsers {
+    my %args = @_;
+
+    my @pids;
+    for my $browser (sort keys %browsers) {
+        my $res = _do_browser('terminate', $browser, %args);
+        return $res unless $res->[0] == 200;
+        push @pids, @{$res->[3]{'func.pids'}};
+    }
+    [200, "OK", undef, {"func.pids" => \@pids}];
 }
 
 1;
@@ -174,7 +223,7 @@ sub terminate_firefox {
 
 =head1 DESCRIPTION
 
-This distribution includes several utilities related to Firefox:
+This distribution includes several utilities related to browsers:
 
 #INSERT_EXECS_LIST
 
