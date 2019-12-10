@@ -240,6 +240,9 @@ This distribution includes several utilities related to browsers:
 
 #INSERT_EXECS_LIST
 
+Supported browsers: Firefox on Linux, Opera on Linux, Chrome on Linux, and
+Vivaldi on Linux.
+
 
 =head1 SEE ALSO
 
