@@ -99,7 +99,7 @@ sub _do_browser {
     } elsif ($which_action eq 'terminate') {
         kill KILL => @pids;
         [200, "OK", "", {"func.pids" => \@pids}];
-    } elsif ($which_action eq 'is_paused') {
+    } elsif ($which_action eq 'is_paused' || $which_action eq 'is_running') {
         my $num_stopped = 0;
         my $num_unstopped = 0;
         my $num_total = 0;
@@ -107,15 +107,26 @@ sub _do_browser {
             $num_total++;
             if ($proc->{state} eq 'stop') { $num_stopped++ } else { $num_unstopped++ }
         }
-        my $is_paused = $num_total == 0 ? undef : $num_stopped == $num_total ? 1 : 0;
-        my $msg = $num_total == 0 ? "There are no $which_browser processes" :
-            $num_stopped   == $num_total ? "$which_browser is paused (all processes are in stop state)" :
-            $num_unstopped == $num_total ? "$which_browser is NOT paused (all processes are not in stop state)" :
-            "$which_browser is NOT paused (some processes are not in stop state)";
-        return [200, "OK", $is_paused, {
-            'cmdline.exit_code' => $is_paused ? 0:1,
-            'cmdline.result' => $args{quiet} ? '' : $msg,
-        }];
+        if ($which_action eq 'is_paused') {
+            my $is_paused  = $num_total == 0 ? undef : $num_stopped == $num_total ? 1 : 0;
+            my $msg = $num_total == 0 ? "There are NO $which_browser processes" :
+                $num_stopped   == $num_total ? "$which_browser is paused (all processes are in stop state)" :
+                $num_unstopped == $num_total ? "$which_browser is NOT paused (all processes are not in stop state)" :
+                "$which_browser is NOT paused (some processes are not in stop state)";
+            return [200, "OK", $is_paused, {
+                'cmdline.exit_code' => $is_paused ? 0:1,
+                'cmdline.result' => $args{quiet} ? '' : $msg,
+            }];
+        } else {
+            my $is_running = $num_total == 0 ? undef : $num_unstopped > 0 ? 1 : 0;
+            my $msg = $num_total == 0 ? "There are NO $which_browser processes" :
+                $num_unstopped > 0 ? "$which_browser is running (some processes are not in stop state)" :
+                "$which_browser exists but is NOT running (all processes are in stop state)";
+            return [200, "OK", $is_running, {
+                'cmdline.exit_code' => $is_running ? 0:1,
+                'cmdline.result' => $args{quiet} ? '' : $msg,
+            }];
+        }
     } else {
         die "BUG: unknown command";
     }
