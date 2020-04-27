@@ -58,7 +58,7 @@ A modern browser now runs complex web pages and applications. Despite browser's
 power management feature, these pages/tabs on the browser often still eat
 considerable CPU cycles even though they only run in the background. Stopping
 (kill -STOP) the browser processes is a simple and effective way to stop CPU
-eating on Unix. It can be performed whenever you are not using your browsers for
+eating on Unix. It can be performed whenever you are not using your browser for
 a little while, e.g. when you are typing on an editor or watching a movie. When
 you want to use your browser again, simply unpause it.
 
