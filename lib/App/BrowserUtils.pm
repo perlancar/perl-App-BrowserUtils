@@ -212,7 +212,7 @@ sub browsers_are_paused {
 
 $SPEC{terminate_browsers} = {
     v => 1.1,
-    summary => "Terminate  (kill -KILL) browsers",
+    summary => "Terminate (kill -KILL) browsers",
     args => {
         %args_common,
     },
