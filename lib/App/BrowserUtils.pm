@@ -34,23 +34,39 @@ our %browsers = (
 
 our $sch_cmd = ['any*', of=>[ ['array*',of=>'str*',min_len=>1], ['str*'] ]];
 
-our %argsopt_browser_cmd = (
+our %argopt_firefox_cmd = (
     firefox_cmd => {
         schema => $sch_cmd,
         default => 'firefox',
     },
+);
+
+our %argopt_chrome_cmd = (
     chrome_cmd => {
         schema => $sch_cmd,
         default => 'google-chrome',
     },
+);
+
+our %argopt_opera_cmd = (
     opera_cmd => {
         schema => $sch_cmd,
         default => 'opera',
     },
+);
+
+our %argopt_vivaldi_cmd = (
     vivaldi_cmd => {
         schema => $sch_cmd,
         default => 'vivaldi',
     },
+);
+
+our %argsopt_browser_cmd = (
+    %argopt_firefox_cmd,
+    %argopt_chrome_cmd,
+    %argopt_opera_cmd,
+    %argopt_vivaldi_cmd,
 );
 
 our %argsopt_browser_start = (
