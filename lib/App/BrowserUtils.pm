@@ -19,7 +19,9 @@ $SPEC{':package'} = {
 
 our %browsers = (
     firefox => {
-        browser_fname_pat => qr/\A(Web Content|WebExtensions|firefox-bin)\z/,
+        # in some OS like linux the binary is firefox-bin, while in some other
+        # like FreeBSD, it's firefox.
+        browser_fname_pat => qr/\A(Web Content|WebExtensions|firefox-bin|firefox)\z/,
     },
     chrome => {
         browser_fname_pat => qr/\A(chrome)\z/,
