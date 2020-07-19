@@ -34,6 +34,73 @@ our %browsers = (
     },
 );
 
+our $sch_cmd = ['any*', of=>[ ['array*',of=>'str*',min_len=>1], ['str*'] ]];
+
+our %argopt_firefox_cmd = (
+    firefox_cmd => {
+        schema => $sch_cmd,
+        default => 'firefox',
+    },
+);
+
+our %argopt_chrome_cmd = (
+    chrome_cmd => {
+        schema => $sch_cmd,
+        default => 'google-chrome',
+    },
+);
+
+our %argopt_opera_cmd = (
+    opera_cmd => {
+        schema => $sch_cmd,
+        default => 'opera',
+    },
+);
+
+our %argopt_vivaldi_cmd = (
+    vivaldi_cmd => {
+        schema => $sch_cmd,
+        default => 'vivaldi',
+    },
+);
+
+our %argsopt_browser_cmd = (
+    %argopt_firefox_cmd,
+    %argopt_chrome_cmd,
+    %argopt_opera_cmd,
+    %argopt_vivaldi_cmd,
+);
+
+our %argsopt_browser_start = (
+    start_firefox => {
+        schema => 'bool*',
+    },
+    start_chrome => {
+        schema => 'bool*',
+    },
+    start_opera => {
+        schema => 'bool*',
+    },
+    start_vivaldi => {
+        schema => 'bool*',
+    },
+);
+
+our %argsopt_browser_restart = (
+    restart_firefox => {
+        schema => 'bool*',
+    },
+    restart_chrome => {
+        schema => 'bool*',
+    },
+    restart_opera => {
+        schema => 'bool*',
+    },
+    restart_vivaldi => {
+        schema => 'bool*',
+    },
+);
+
 our %argopt_users = (
     users => {
         'x.name.is_plural' => 1,
@@ -99,9 +166,10 @@ sub _do_browser {
         kill CONT => @pids;
         [200, "OK", "", {"func.pids" => \@pids}];
     } elsif ($which_action eq 'terminate') {
+        log_info "Terminating $which_browser ...";
         kill KILL => @pids;
         [200, "OK", "", {"func.pids" => \@pids}];
-    } elsif ($which_action eq 'is_paused' || $which_action eq 'is_running') {
+    } elsif ($which_action eq 'has_processes' || $which_action eq 'is_paused' || $which_action eq 'is_running') {
         my $num_stopped = 0;
         my $num_unstopped = 0;
         my $num_total = 0;
@@ -109,7 +177,14 @@ sub _do_browser {
             $num_total++;
             if ($proc->{state} eq 'stop') { $num_stopped++ } else { $num_unstopped++ }
         }
-        if ($which_action eq 'is_paused') {
+        if ($which_action eq 'has_processes') {
+            my $has_processes = $num_total > 0 ? 1:0;
+            my $msg = $has_processes ? "$which_browser has processes" : "$which_browser does NOT have processes";
+            return [200, "OK", $has_processes, {
+                "cmdline.exit_code" => $has_processes ? 0:1,
+                "cmdline.result" => $args{quiet} ? '' : $msg,
+            }];
+        } elsif ($which_action eq 'is_paused') {
             my $is_paused  = $num_total == 0 ? undef : $num_stopped == $num_total ? 1 : 0;
             my $msg = $num_total == 0 ? "There are NO $which_browser processes" :
                 $num_stopped   == $num_total ? "$which_browser is paused (all processes are in stop state)" :
@@ -240,6 +315,229 @@ sub terminate_browsers {
         push @pids, @{$res->[3]{'func.pids'}};
     }
     [200, "OK", undef, {"func.pids" => \@pids}];
+}
+
+sub _start_or_restart_browsers {
+    require Capture::Tiny;
+    require Proc::Background;
+
+    my ($which_action, %args) = @_;
+    my %pbs; # key=browser name, val=Proc::Background objects
+    my %outputs; # key=browser name, val=output
+
+    my %started;       # key=browser name, val=1
+    my %fail;          # key=browser name, val=reason
+    my %has_processes; # key=browser name, val=1
+    my %terminated;    # key=browser name, val=1
+
+    my $num_start_requests = 0;
+    for my $browser (sort keys %browsers) {
+        next if $which_action eq 'start'   && !$args{"start_$browser"};
+        next if $which_action eq 'restart' && !$args{"restart_$browser"};
+        $num_start_requests++;
+
+        # TODO: cache? we are running ps once for each browser
+        #log_trace "Checking whether $browser has processes ...";
+        my $res_hp = _do_browser('has_processes', $browser, users=>[$>]);
+        if ($res_hp->[0] != 200) {
+            log_error "Can't check whether $browser has processes: $res_hp->[0] - $res_hp->[1], skipped";
+            $fail{$browser} //= "Can't check for processes";
+            next;
+        }
+        my $has_processes = $res_hp->[2];
+        if ($which_action eq 'start') {
+            if ($has_processes) {
+                $has_processes{$browser}++;
+                next;
+            }
+        } else { # restart
+            my $res_term;
+          TERMINATE: {
+                last unless $has_processes;
+                if ($args{-dry_run}) {
+                    log_info "[DRY] Terminating $browser ...";
+                    $terminated{$browser}++;
+                    last;
+                }
+
+                $res_term = _do_browser('terminate', $browser, users=>[$>]);
+                if ($res_term->[0] != 200) {
+                    log_error "Can't terminate $browser: $res_term->[0] - $res_term->[1], skipped";
+                    $fail{$browser} //= "Can't terminate";
+                    next;
+                }
+
+                sleep 3;
+
+                $res_hp = _do_browser('has_processes', $browser, users=>[$>]);
+                if ($res_hp->[0] != 200) {
+                    log_error "Can't check whether $browser has processes (after terminatign): $res_hp->[0] - $res_hp->[1], skipped";
+                    $fail{$browser} //= "Can't check for processes (after terminating)";
+                    next;
+                }
+                $has_processes = $res_hp->[2];
+                if ($has_processes) {
+                    log_error "$browser still has processes after terminating, skipped";
+                    $fail{$browser} //= "Still has process after terminating";
+                    next;
+                }
+                $terminated{$browser}++;
+            } # TERMINATE
+        }
+
+      START: {
+            my $cmd = $args{"${browser}_cmd"} //
+                $argsopt_browser_start{"${browser}_cmd"}{default};
+
+            if ($args{-dry_run}) {
+                log_info "[DRY] Starting %s (cmd: %s) ...", $browser, $cmd;
+                $started{$browser}++;
+                last;
+            }
+
+            log_info "Starting %s (cmd: %s) ...", $browser, $cmd;
+            $outputs{$browser} = Capture::Tiny::capture_merged(
+                sub { $pbs{$browser} = Proc::Background->new($cmd) });
+            $started{$browser}++;
+        }
+    }
+
+    my $num_started = keys %started;
+    if ($num_started == 0) {
+        return [304,
+                $num_start_requests ? "All browsers already have processes" :
+                    "Not ${which_action}ing any browsers"];
+    }
+
+    my (%alive, %not_alive);
+    if ($args{-dry_run}) {
+        %alive = %started;
+    } else {
+        for my $wait_time (2, 5, 10) {
+            %alive = ();
+            %not_alive = ();
+            log_trace "Checking if the started browsers are alive ...";
+            for my $browser (keys %pbs) {
+                if ($pbs{$browser}->alive) {
+                    $alive{$browser}++;
+                } else {
+                    $not_alive{$browser}++;
+                }
+            }
+            last if scalar(keys %alive) == $num_started;
+        }
+    }
+
+    my $num_alive = keys %alive;
+    my $num_not_alive = keys %not_alive;
+
+    my $status;
+    my $reason;
+    my $msg;
+    my $verb_started = $which_action eq 'restart' ? 'Started/restarted' : 'Started';
+    if ($num_alive == $num_started) {
+        $status = 200;
+        $reason = "OK";
+        $msg = "$verb_started ".join(", ", sort keys %alive);
+    } elsif ($num_alive == 0) {
+        $status = 500;
+        $reason = $msg = "Can't start any browser (".join(", ", %not_alive).")";
+    } else {
+        $status = 200;
+        $reason = "OK";
+        $msg = "$verb_started ".join(", ", sort keys %alive)."; but failed to start ".
+            join(", ", sort keys %not_alive);
+    }
+
+    $fail{$_} //= "Can't start" for keys %not_alive;
+
+    [$status, $msg, undef, {
+        'func.outputs' => \%outputs,
+        ($which_action eq 'start' ? ('func.has_processes' => [sort keys %has_processes]) : ()),
+        'func.started' => [sort grep {!$terminated{$_}} keys %alive],
+        ($which_action eq 'restart' ? ('func.restarted' => [sort grep {$terminated{$_}} keys %alive]) : ()),
+        'func.fail' => [sort keys %fail],
+    }];
+}
+
+$SPEC{start_browsers} = {
+    v => 1.1,
+    summary => "Start browsers",
+    description => <<'_',
+
+For each of the requested browser, check whether browser processes (that run as
+the current user) exist and if not then start the browser. If browser processes
+exist, even if all are paused, then no new instance of the browser will be
+started.
+
+when starting each browser, console output will be captured and returned in
+function metadata. Will wait for 2/5/10 seconds and check if the browsers have
+been started. If all browsers can't be started, will return 500; otherwise will
+return 200 but report the browsers that failed to start to the STDERR.
+
+Example on the CLI:
+
+    % start-browsers --start-firefox
+
+To customize command to use to start:
+
+    % start-browsers --start-firefox --firefox-cmd 'firefox -P myprofile'
+
+
+_
+    args => {
+        # args_common is not relevant here, for now (unless we want to start
+        # browsers as other users)
+
+        %argsopt_browser_start,
+        %argsopt_browser_cmd,
+        %argopt_quiet,
+    },
+    features => {
+        dry_run => 1,
+    },
+};
+sub start_browsers {
+    _start_or_restart_browsers('start', @_);
+}
+
+$SPEC{restart_browsers} = {
+    v => 1.1,
+    summary => "Restart browsers",
+    description => <<'_',
+
+For each of the requested browser, first check whether browser processes (that
+run the current user) exist. If they do then terminate the browser first. After
+that, start the browser again.
+
+Example on the CLI:
+
+    % restart-browsers --restart-firefox
+
+To customize command:
+
+    % restart-browsers --start-firefox --firefox-cmd 'firefox -P myprofile'
+
+when starting each browser, console output will be captured and returned in
+function metadata. Will wait for 2/5/10 seconds and check if the browsers have
+been started. If all browsers can't be started, will return 500; otherwise will
+return 200 but report the browsers that failed to start to the STDERR.
+
+_
+    args => {
+        # args_common is not relevant here, for now (unless we want to start
+        # browsers as other users)
+
+        %argsopt_browser_restart,
+        %argsopt_browser_cmd,
+        %argopt_quiet,
+    },
+    features => {
+        dry_run => 1,
+    },
+};
+sub restart_browsers {
+    _start_or_restart_browsers('restart', @_);
 }
 
 1;
