@@ -158,6 +158,20 @@ sub _do_browser {
     my @pids = map { $_->{pid} } @$procs;
 
     if ($which_action eq 'ps') {
+        if ($args{-cmdline_r} && !defined($args{-cmdline_r}{format}) ||
+                $args{-cmdline_r}{format} =~ /text/) {
+            # convert arrayrefs etc so the result can still be rendered as
+            # simple 2d table
+            for my $proc (@$procs) {
+                # too big
+                delete $proc->{environ};
+
+                for my $key (keys %$proc) {
+                    $proc->{$key} = join(" ", @{ $proc->{$key} })
+                        if ref $proc->{$key} eq 'ARRAY';
+                }
+            }
+        }
         return [200, "OK", $procs, {'table.fields'=>[qw/pid uid euid state/]}];
     } elsif ($which_action eq 'pause') {
         kill STOP => @pids;
@@ -223,7 +237,7 @@ sub ps_browsers {
     for my $browser (sort keys %browsers) {
         my $res = _do_browser('ps', $browser, %args);
         return $res unless $res->[0] == 200;
-        push @rows, @{$res->[2]};
+        push @rows, @{$res->[2]}; # XXX remove duplicate?
     }
     [200, "OK", \@rows];
 }
