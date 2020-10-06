@@ -21,13 +21,18 @@ our %browsers = (
     firefox => {
         filter => sub {
             my $p = shift;
+
+            # when firefox is upgraded while an instance is still running, the
+            # exec field becomes empty and we need to use cmndline
+            my $prog = $p->{exec} || $p->{cmndline};
+
             # in some OS like linux the binary is firefox-bin, while in some
             # other like FreeBSD, it's firefox.
-            do { $p->{_note} = "exec is firefox or firefox-bin"; goto FOUND } if defined $p->{exec} && $p->{exec} =~ m![/\\](firefox-bin|firefox)\z!;
+            do { $p->{_note} = "program is firefox or firefox-bin"; goto FOUND } if $prog =~ m![/\\](firefox-bin|firefox)(\z|\s)!;
             do { $p->{_note} = "fname looks like firefox"; goto FOUND } if $p->{fname} =~ /\A(Web Content|WebExtensions|firefox-bin|firefox)\z/;
             goto NOT_FOUND;
           FOUND:
-            log_trace "Found firefox process (PID=%d, cmdline=%s, note=%s)", $p->{pid}, $p->{cmndline}, $p->{_note};
+            log_trace "Found firefox process (PID=%d, prog (exec|cmndline)=%s, note=%s)", $p->{pid}, $prog, $p->{_note};
             return 1;
           NOT_FOUND:
             0;
