@@ -44,7 +44,7 @@ our %browsers = (
             do { $p->{_note} = "fname looks like chrome"; goto FOUND } if $p->{fname} =~ /\A(chrome)\z/;
             goto NOT_FOUND;
           FOUND:
-            log_trace "Found firefox process (PID=%d, cmdline=%s, note=%s)", $p->{pid}, $p->{cmndline}, $p->{_note};
+            log_trace "Found chrome process (PID=%d, cmdline=%s, note=%s)", $p->{pid}, $p->{cmndline}, $p->{_note};
             return 1;
           NOT_FOUND:
             0;
