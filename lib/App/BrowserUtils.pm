@@ -1,14 +1,16 @@
 package App::BrowserUtils;
 
-# AUTHORITY
-# DATE
-# DIST
-# VERSION
-
 use 5.010001;
 use strict 'subs', 'vars';
 use warnings;
 use Log::ger;
+
+use Hash::Subset qw(hash_subset);
+
+# AUTHORITY
+# DATE
+# DIST
+# VERSION
 
 our %SPEC;
 
@@ -159,6 +161,21 @@ our %argopt_quiet = (
     },
 );
 
+our %argopt_periods = (
+    periods => {
+        summary => 'Pause and unpause times, in seconds',
+        schema => ['array*', of=>'duration', min_len=>2, 'x.perl.coerce_rules'=>['From_str::comma_sep']],
+        description => <<'_',
+
+For example, to pause for 5 minutes, then unpause 10 seconds, then pause for 2
+minutes, then unpause for 30 seconds (then repeat the pattern), you can use:
+
+    300,10,120,30
+
+_
+    },
+);
+
 our %args_common = (
     %argopt_users,
 );
@@ -167,11 +184,29 @@ our $desc_pause = <<'_';
 
 A modern browser now runs complex web pages and applications. Despite browser's
 power management feature, these pages/tabs on the browser often still eat
-considerable CPU cycles even though they only run in the background. Stopping
+considerable CPU cycles even though they only run in the background. Pausing
 (kill -STOP) the browser processes is a simple and effective way to stop CPU
-eating on Unix. It can be performed whenever you are not using your browser for
-a little while, e.g. when you are typing on an editor or watching a movie. When
-you want to use your browser again, simply unpause it.
+eating on Unix and prolong your laptop battery life. It can be performed
+whenever you are not using your browser for a little while, e.g. when you are
+typing on an editor or watching a movie. When you want to use your browser
+again, simply unpause (kill -CONT) it.
+
+_
+
+our $desc_pause_and_unpause = $desc_pause . <<'_';
+The `pause-and-unpause` action pause and unpause browser in an alternate
+fashion, by default every 5 minutes and 30 seconds. This is a compromise to save
+CPU time most of the time but then give time for web applications in the browser
+to catch up during the unpause window (e.g. for WhatsApp Web to display new
+messages and sound notification.) It can be used when you are not browsing but
+still want to be notified by web applications from time to time.
+
+If you run this routine, it will start pausing and unpausing browser. When you
+want to use the browser, press Ctrl-C to interrupt the routine. Then after you
+are done with the browser and want to pause-and-unpause again, you can re-run
+this routine.
+
+You can customize the periods via the `periods` option.
 
 _
 
@@ -180,81 +215,117 @@ sub _do_browser {
 
     my ($which_action, $which_browser, %args) = @_;
 
-    my $browser_fname_pat = $browsers{$which_browser}{filter}
+    my $browser_fname_pat = ($which_browser eq 'all known browsers' || $browsers{$which_browser}{filter})
         or return [400, "Unknown browser '$which_browser'"];
 
-    my $procs = Proc::Find::find_proc(
-        detail => 1,
-        filter => $browsers{$which_browser}{filter},
-    );
+    my @periods = @{ $args{periods} // [300,30] };
+    my @stopped_pids;
+    my $period_idx = -1;
 
-    my @pids = map { $_->{pid} } @$procs;
+    local $SIG{INT} = sub {
+        if (@stopped_pids) {
+            log_info "Unpausing stopped PID(s) ...";
+            kill CONT => @stopped_pids;
+        }
+        log_info "Exiting ...";
+        exit 0;
+    };
 
-    if ($which_action eq 'ps') {
-        if ($args{-cmdline_r} && (!defined($args{-cmdline_r}{format}) ||
-                $args{-cmdline_r}{format} =~ /text/)) {
-            # convert arrayrefs etc so the result can still be rendered as
-            # simple 2d table
-            for my $proc (@$procs) {
-                # too big
-                delete $proc->{environ};
-                delete $proc->{cmndline}; # duplicate info with cmdline
+    my $filter = $which_browser eq 'all known browsers' ? sub {
+        for my $br (keys %browsers) {
+            return 1 if $browsers{$br}{filter}->(@_);
+        }
+        0;
+    } : $browsers{$which_browser}{filter};
 
-                for my $key (keys %$proc) {
-                    $proc->{$key} = join(" ", @{ $proc->{$key} })
-                        if ref $proc->{$key} eq 'ARRAY';
+    while (1) {
+        my $procs = Proc::Find::find_proc(
+            detail => 1,
+            filter => $filter,
+        );
+
+        my @pids = map { $_->{pid} } @$procs;
+
+        if ($which_action eq 'ps') {
+            if ($args{-cmdline_r} && (!defined($args{-cmdline_r}{format}) ||
+                                      $args{-cmdline_r}{format} =~ /text/)) {
+                # convert arrayrefs etc so the result can still be rendered as
+                # simple 2d table
+                for my $proc (@$procs) {
+                    # too big
+                    delete $proc->{environ};
+                    delete $proc->{cmndline}; # duplicate info with cmdline
+
+                    for my $key (keys %$proc) {
+                        $proc->{$key} = join(" ", @{ $proc->{$key} })
+                            if ref $proc->{$key} eq 'ARRAY';
+                    }
                 }
             }
-        }
-        return [200, "OK", $procs, {'table.fields'=>[qw/pid uid euid state cmdline/]}];
-    } elsif ($which_action eq 'pause') {
-        kill STOP => @pids;
-        [200, "OK", "", {"func.pids" => \@pids}];
-    } elsif ($which_action eq 'unpause') {
-        kill CONT => @pids;
-        [200, "OK", "", {"func.pids" => \@pids}];
-    } elsif ($which_action eq 'terminate') {
-        log_info "Terminating $which_browser ...";
-        kill KILL => @pids;
-        [200, "OK", "", {"func.pids" => \@pids}];
-    } elsif ($which_action eq 'has_processes' || $which_action eq 'is_paused' || $which_action eq 'is_running') {
-        my $num_stopped = 0;
-        my $num_unstopped = 0;
-        my $num_total = 0;
-        for my $proc (@$procs) {
-            $num_total++;
-            if ($proc->{state} eq 'stop') { $num_stopped++ } else { $num_unstopped++ }
-        }
-        if ($which_action eq 'has_processes') {
-            my $has_processes = $num_total > 0 ? 1:0;
-            my $msg = $has_processes ? "$which_browser has processes" : "$which_browser does NOT have processes";
-            return [200, "OK", $has_processes, {
-                "cmdline.exit_code" => $has_processes ? 0:1,
-                "cmdline.result" => $args{quiet} ? '' : $msg,
-            }];
-        } elsif ($which_action eq 'is_paused') {
-            my $is_paused  = $num_total == 0 ? undef : $num_stopped == $num_total ? 1 : 0;
-            my $msg = $num_total == 0 ? "There are NO $which_browser processes" :
-                $num_stopped   == $num_total ? "$which_browser is paused (all processes are in stop state)" :
-                $num_unstopped == $num_total ? "$which_browser is NOT paused (all processes are not in stop state)" :
-                "$which_browser is NOT paused (some processes are not in stop state)";
-            return [200, "OK", $is_paused, {
-                'cmdline.exit_code' => $is_paused ? 0:1,
-                'cmdline.result' => $args{quiet} ? '' : $msg,
-            }];
+            return [200, "OK", $procs, {'table.fields'=>[qw/pid uid euid state cmdline/]}];
+        } elsif ($which_action eq 'pause') {
+            kill STOP => @pids;
+            return [200, "OK", "", {"func.pids" => \@pids}];
+        } elsif ($which_action eq 'unpause') {
+            kill CONT => @pids;
+            return [200, "OK", "", {"func.pids" => \@pids}];
+        } elsif ($which_action eq 'terminate') {
+            log_info "Terminating $which_browser ...";
+            kill KILL => @pids;
+            return [200, "OK", "", {"func.pids" => \@pids}];
+        } elsif ($which_action eq 'has_processes' || $which_action eq 'is_paused' || $which_action eq 'is_running') {
+            my $num_stopped = 0;
+            my $num_unstopped = 0;
+            my $num_total = 0;
+            for my $proc (@$procs) {
+                $num_total++;
+                if ($proc->{state} eq 'stop') { $num_stopped++ } else { $num_unstopped++ }
+            }
+            if ($which_action eq 'has_processes') {
+                my $has_processes = $num_total > 0 ? 1:0;
+                my $msg = $has_processes ? "$which_browser has processes" : "$which_browser does NOT have processes";
+                return [200, "OK", $has_processes, {
+                    "cmdline.exit_code" => $has_processes ? 0:1,
+                    "cmdline.result" => $args{quiet} ? '' : $msg,
+                }];
+            } elsif ($which_action eq 'is_paused') {
+                my $is_paused  = $num_total == 0 ? undef : $num_stopped == $num_total ? 1 : 0;
+                my $msg = $num_total == 0 ? "There are NO $which_browser processes" :
+                    $num_stopped   == $num_total ? "$which_browser is paused (all processes are in stop state)" :
+                    $num_unstopped == $num_total ? "$which_browser is NOT paused (all processes are not in stop state)" :
+                    "$which_browser is NOT paused (some processes are not in stop state)";
+                return [200, "OK", $is_paused, {
+                    'cmdline.exit_code' => $is_paused ? 0:1,
+                    'cmdline.result' => $args{quiet} ? '' : $msg,
+                }];
+            } else {
+                my $is_running = $num_total == 0 ? undef : $num_unstopped > 0 ? 1 : 0;
+                my $msg = $num_total == 0 ? "There are NO $which_browser processes" :
+                    $num_unstopped > 0 ? "$which_browser is running (some processes are not in stop state)" :
+                    "$which_browser exists but is NOT running (all processes are in stop state)";
+                return [200, "OK", $is_running, {
+                    'cmdline.exit_code' => $is_running ? 0:1,
+                    'cmdline.result' => $args{quiet} ? '' : $msg,
+                }];
+            }
+        } elsif ($which_action eq 'pause_and_unpause') {
+            $period_idx++;
+            $period_idx = 0 if $period_idx >= @periods;
+            my $period = $periods[$period_idx];
+            if ($period_idx == 0) {
+                log_info "Pausing $which_browser for $period second(s) ...";
+                kill STOP => @pids;
+                @stopped_pids = @pids;
+            } else {
+                log_info "Unpausing $which_browser for $period second(s) ...";
+                kill CONT => @stopped_pids;
+                @stopped_pids = ();
+            }
+            sleep $period;
         } else {
-            my $is_running = $num_total == 0 ? undef : $num_unstopped > 0 ? 1 : 0;
-            my $msg = $num_total == 0 ? "There are NO $which_browser processes" :
-                $num_unstopped > 0 ? "$which_browser is running (some processes are not in stop state)" :
-                "$which_browser exists but is NOT running (all processes are in stop state)";
-            return [200, "OK", $is_running, {
-                'cmdline.exit_code' => $is_running ? 0:1,
-                'cmdline.result' => $args{quiet} ? '' : $msg,
-            }];
+            die "BUG: unknown command";
         }
-    } else {
-        die "BUG: unknown command";
-    }
+    } # while 1
 }
 
 $SPEC{ps_browsers} = {
@@ -279,7 +350,8 @@ sub ps_browsers {
 $SPEC{pause_browsers} = {
     v => 1.1,
     summary => "Pause (kill -STOP) browsers",
-    description => $desc_pause,
+    description => $desc_pause .
+    "See also the `unpause_browsers` and the `pause_and_unpause_browsers` routines.\n\n",
     args => {
         %args_common,
     },
@@ -299,6 +371,11 @@ sub pause_browsers {
 $SPEC{unpause_browsers} = {
     v => 1.1,
     summary => "Unpause (resume, continue, kill -CONT) browsers",
+    description => <<'_',
+
+See also the `pause_browsers` and the `pause_and_unpause_browsers` routines.
+
+_
     args => {
         %args_common,
     },
@@ -313,6 +390,22 @@ sub unpause_browsers {
         push @pids, @{$res->[3]{'func.pids'}};
     }
     [200, "OK", undef, {"func.pids" => \@pids}];
+}
+
+$SPEC{pause_and_unpause_browsers} = {
+    v => 1.1,
+    summary => "Pause and unpause browsers periodically",
+    description => $desc_pause_and_unpause .
+    "See also the separate `pause_browsers` and the `unpause_browsers` routines.\n\n",
+    args => {
+        %args_common,
+        %argopt_periods,
+    },
+};
+sub pause_and_unpause_browsers {
+    my %args = @_;
+
+    _do_browser('pause_and_unpause', 'all known browsers', %args);
 }
 
 $SPEC{browsers_are_paused} = {
