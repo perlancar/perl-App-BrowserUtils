@@ -163,8 +163,14 @@ our %argopt_quiet = (
 
 our %argopt_periods = (
     periods => {
+        'x.name.is_plural' => 1,
+        'x.name.singular' => 'period',
         summary => 'Pause and unpause times, in seconds',
-        schema => ['array*', of=>'duration', min_len=>2, 'x.perl.coerce_rules'=>['From_str::comma_sep']],
+        schema => ['array*', {
+            of=>'duration',
+            min_len=>2,
+            #'x.perl.coerce_rules'=>['From_str::comma_sep'], # not working yet
+        ],
         description => <<'_',
 
 For example, to pause for 5 minutes, then unpause 10 seconds, then pause for 2
