@@ -394,7 +394,7 @@ sub unpause_browsers {
 
 $SPEC{pause_and_unpause_browsers} = {
     v => 1.1,
-    summary => "Pause and unpause browsers periodically",
+    summary => "Pause and unpause browsers alternately",
     description => $desc_pause_and_unpause .
     "See also the separate `pause_browsers` and the `unpause_browsers` routines.\n\n",
     args => {
