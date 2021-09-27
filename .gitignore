@@ -2,3 +2,4 @@ App-BrowserUtils-*
 .build
 *~
 nytprof*
+.DS_Store
