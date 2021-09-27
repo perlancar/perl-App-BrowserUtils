@@ -1,3 +1,9 @@
+0.015   2021-09-27  Released-By: PERLANCAR; Urgency: low
+
+	- [cli pause-and-unpause-browsers] Tweak option --periods (--period
+	  for the singular version).
+
+
 0.014   2021-09-27  Released-By: PERLANCAR; Urgency: low
 
 	- No functional changes.

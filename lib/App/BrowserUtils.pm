@@ -170,7 +170,7 @@ our %argopt_periods = (
             of=>'duration',
             min_len=>2,
             #'x.perl.coerce_rules'=>['From_str::comma_sep'], # not working yet
-        ],
+        }],
         description => <<'_',
 
 For example, to pause for 5 minutes, then unpause 10 seconds, then pause for 2
