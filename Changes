@@ -1,3 +1,10 @@
+0.014   2021-09-27  Released-By: PERLANCAR; Urgency: low
+
+	- No functional changes.
+
+	- [cli pause-and-unpause-browsers] [doc] Tweak Abstract.
+
+
 0.013   2021-09-27  Released-By: PERLANCAR; Urgency: medium
 
 	- Add utility: pause-and-unpause-browsers.
