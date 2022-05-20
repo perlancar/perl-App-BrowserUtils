@@ -161,6 +161,13 @@ our %argopt_quiet = (
     },
 );
 
+our %argopt_signal = (
+    signal => {
+        schema=>'unix::signal*',
+        cmdline_aliases => {s=>{}},
+    },
+);
+
 our %argopt_periods = (
     periods => {
         'x.name.is_plural' => 1,
@@ -276,8 +283,15 @@ sub _do_browser {
             kill CONT => @pids;
             return [200, "OK", "", {"func.pids" => \@pids}];
         } elsif ($which_action eq 'terminate') {
-            log_info "Terminating $which_browser ...";
-            kill KILL => @pids;
+            my $signal;
+            if (defined $args{signal}) {
+                log_info "Sending %s signal to $which_browser ...", $args{signal};
+                $signal = $args{signal};
+            } else {
+                log_info "Terminating $which_browser ...";
+                $signal = 'KILL';
+            }
+            kill $signal => @pids;
             return [200, "OK", "", {"func.pids" => \@pids}];
         } elsif ($which_action eq 'has_processes' || $which_action eq 'is_paused' || $which_action eq 'is_running') {
             my $num_stopped = 0;
@@ -447,9 +461,10 @@ sub browsers_are_paused {
 
 $SPEC{terminate_browsers} = {
     v => 1.1,
-    summary => "Terminate (kill -KILL) browsers",
+    summary => "Terminate browsers (by default with -KILL)",
     args => {
         %args_common,
+        %argopt_signal,
     },
 };
 sub terminate_browsers {
