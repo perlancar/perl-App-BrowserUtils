@@ -150,7 +150,7 @@ our %argopt_users = (
         'x.name.is_plural' => 1,
         'x.name.singular' => 'user',
         summary => 'Kill browser processes that belong to certain user(s) only',
-        schema => ['array*', of=>'unix::local_uid*', 'x.perl.coerce_rules' => ['From_str::comma_sep']],
+        schema => ['array*', of=>'unix::uid::exists*', 'x.perl.coerce_rules' => ['From_str::comma_sep']],
     },
 );
 
