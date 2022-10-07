@@ -140,6 +140,9 @@ our %argsopt_browser_start = (
     start_vivaldi => {
         schema => 'bool*',
     },
+    start_brave => {
+        schema => 'bool*',
+    },
 );
 
 our %argsopt_browser_restart = (
@@ -153,6 +156,9 @@ our %argsopt_browser_restart = (
         schema => 'bool*',
     },
     restart_vivaldi => {
+        schema => 'bool*',
+    },
+    restart_brave => {
         schema => 'bool*',
     },
 );
