@@ -76,6 +76,18 @@ our %browsers = (
             0;
         },
     },
+    brave => {
+        filter => sub {
+            my $p = shift;
+            do { $p->{_note} = "fname looks like brave"; goto FOUND } if $p->{fname} =~ /\A(brave)\z/;
+            goto NOT_FOUND;
+          FOUND:
+            log_trace "Found brave process (PID=%d, cmdline=%s, note=%s)", $p->{pid}, $p->{cmndline}, $p->{_note};
+            return 1;
+          NOT_FOUND:
+            0;
+        },
+    },
 );
 
 our $sch_cmd = ['any*', of=>[ ['array*',of=>'str*',min_len=>1], ['str*'] ]];
